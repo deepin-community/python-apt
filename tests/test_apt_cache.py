@@ -8,8 +8,6 @@
 # notice and this notice are preserved.
 """Unit tests for verifying the correctness of check_dep, etc in apt_pkg."""
 
-from __future__ import print_function
-
 import glob
 import logging
 import os
@@ -18,17 +16,16 @@ import sys
 import tempfile
 import unittest
 
-
 from test_all import get_library_dir
 
 libdir = get_library_dir()
 if libdir:
     sys.path.insert(0, libdir)
 
-import apt
 import apt_pkg
-
 import testcommon
+
+import apt
 
 
 def if_sources_list_is_readable(f):
@@ -46,7 +43,7 @@ def get_open_file_descriptors():
         fds = os.listdir("/proc/self/fd")
     except OSError:
         logging.warning("failed to list /proc/self/fd")
-        return set([])
+        return set()
     return set(map(int, fds))
 
 
@@ -239,6 +236,18 @@ class TestAptCache(testcommon.TestCase):
         arches = apt_pkg.get_architectures()
         self.assertTrue(main_arch in arches)
 
+    def test_phasing_applied(self):
+        """checks the return type of phasing_applied."""
+        cache = apt.Cache()
+        pkg = cache["apt"]
+        self.assertIsInstance(pkg.phasing_applied, bool)
+
+    def test_is_security_update(self):
+        """checks the return type of is_security_update."""
+        cache = apt.Cache()
+        pkg = cache["apt"]
+        self.assertIsInstance(pkg.installed.is_security_update, bool)
+
     def test_apt_cache_reopen_is_safe(self):
         """cache: check that we cannot use old package objects after reopen"""
         cache = apt.Cache()
@@ -339,7 +348,7 @@ class TestAptCache(testcommon.TestCase):
             p = c["a"]
             a_id = p.id
             p_hash = hash(p)
-            set_of_p = set([p])
+            set_of_p = {p}
             self.write_status_file("baz")
             apt_pkg.init_system()
             c.open()
@@ -373,6 +382,18 @@ class TestAptCache(testcommon.TestCase):
             c = apt.Cache()
             c["a"].mark_delete()
             self.assertEqual([c["a"]], [p for p in c if p.marked_delete])
+
+    def test_problemresolver_keep_phased_updates(self):
+        """Check that the c++ function can be called."""
+        with tempfile.NamedTemporaryFile() as status:
+            apt_pkg.config["Dir::Etc::SourceList"] = "/dev/null"
+            apt_pkg.config["Dir::Etc::SourceParts"] = "/dev/null"
+            apt_pkg.config["Dir::State::Status"] = status.name
+            apt_pkg.init_system()
+
+            cache = apt.Cache()
+            problemresolver = apt.ProblemResolver(cache)
+            self.assertIsNone(problemresolver.keep_phased_updates())
 
 
 if __name__ == "__main__":

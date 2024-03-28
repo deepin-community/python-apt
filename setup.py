@@ -4,17 +4,17 @@
 import glob
 import os
 import shutil
-import sys
 import subprocess
+import sys
 
-from setuptools import setup, Extension
+from setuptools import Extension, setup
 from setuptools.command.install import install
 
 cmdclass = {}
 
 try:
-    from DistUtilsExtra.command import build_extra, build_i18n
     from DistUtilsExtra.auto import clean_build_tree
+    from DistUtilsExtra.command import build_extra, build_i18n
 except ImportError:
     print("W: [python%s] DistUtilsExtra import error." % sys.version[:3])
 else:
@@ -49,6 +49,9 @@ def get_version():
         out, _ = proc.communicate()
         if proc.returncode == 0:
             version = out.decode("utf-8")
+
+    version = version.strip()
+
     if not version:
         return version
 
@@ -125,7 +128,7 @@ if len(sys.argv) > 1 and sys.argv[1] == "build":
     if not os.path.exists("build/data/templates/"):
         os.makedirs("build/data/templates")
     for template in glob.glob("data/templates/*.info.in"):
-        source = open(template, "r")
+        source = open(template)
         build = open("build/" + template[:-3], "w")
         for line in source:
             build.write(line.lstrip("_"))

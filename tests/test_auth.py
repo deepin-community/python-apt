@@ -1,7 +1,5 @@
 #!/usr/bin/python3
 
-from __future__ import print_function
-
 import contextlib
 import errno
 import itertools
@@ -11,14 +9,13 @@ import sys
 import tempfile
 import time
 import unittest
-
 from http.server import HTTPServer
 from http.server import SimpleHTTPRequestHandler as HTTPRequestHandler
 
 import apt_pkg
-import apt.auth
-
 import testcommon
+
+import apt.auth
 
 WHEEZY_KEYID = "8B48AD6246925553"
 WHEEZY_KEYDATE = "1335553717"
@@ -276,7 +273,7 @@ class TestAuthKeys(testcommon.TestCase):
                 try:
                     httpd = HTTPServer(("localhost", port), HTTPRequestHandler)
                     break
-                except IOError as e:
+                except OSError as e:
                     if e.errno != errno.EADDRINUSE:
                         raise
             keyserver_write = os.fdopen(keyserver_pipe[1], "w")

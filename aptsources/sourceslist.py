@@ -23,8 +23,7 @@
 #  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
 #  USA
 
-from __future__ import absolute_import, print_function
-
+import builtins
 import glob
 import io
 import logging
@@ -32,22 +31,14 @@ import os.path
 import re
 import shutil
 import time
-from typing import (
-    Any,
-    Dict,
-    Callable,
-    Iterable,
-    Iterator,
-    List,
-    Optional,
-    Tuple,
-    TypeVar,
-    Union,
-)
+import weakref
+from collections.abc import Callable, Iterable, Iterator
+from typing import Any, Generic, Optional, TypeVar, Union
 
 import apt_pkg
-from .distinfo import DistInfo, Template
+
 from . import _deb822
+from .distinfo import DistInfo, Template
 
 # from apt_pkg import gettext as _
 
@@ -94,7 +85,7 @@ def is_mirror(master_uri: str, compare_uri: str) -> bool:
     return False
 
 
-def uniq(s: Iterable[T]) -> List[T]:
+def uniq(s: Iterable[T]) -> list[T]:
     """simple and efficient way to return uniq collection
 
     This is not intended for use with a SourceList. It is provided
@@ -110,11 +101,13 @@ class SingleValueProperty(property):
         self.__doc__ = doc
 
     def __get__(
-        self, obj: "Deb822SourceEntry", objtype: Optional[type] = None
-    ) -> Optional[str]:
+        self, obj: Optional["Deb822SourceEntry"], objtype: type | None = None
+    ) -> str | None:
+        if obj is None:
+            return self  # type: ignore
         return obj.section.get(self.key, None)
 
-    def __set__(self, obj: "Deb822SourceEntry", value: Optional[str]) -> None:
+    def __set__(self, obj: "Deb822SourceEntry", value: str | None) -> None:
         if value is None:
             del obj.section[self.key]
         else:
@@ -127,20 +120,48 @@ class MultiValueProperty(property):
         self.__doc__ = doc
 
     def __get__(
-        self, obj: "Deb822SourceEntry", objtype: Optional[type] = None
-    ) -> List[str]:
+        self, obj: Optional["Deb822SourceEntry"], objtype: type | None = None
+    ) -> list[str]:
+        if obj is None:
+            return self  # type: ignore
         return SourceEntry.mysplit(obj.section.get(self.key, ""))
 
-    def __set__(self, obj: "Deb822SourceEntry", values: List[str]) -> None:
+    def __set__(self, obj: "Deb822SourceEntry", values: list[str]) -> None:
         obj.section[self.key] = " ".join(values)
+
+
+class ExplodedEntryProperty(property, Generic[T]):
+    def __init__(self, parent: T):
+        self.parent = parent
+
+    def __get__(
+        self, obj: Optional["ExplodedDeb822SourceEntry"], objtype: type | None = None
+    ) -> T:
+        if obj is None:
+            return self  # type: ignore
+        return self.parent.__get__(obj.parent)  # type: ignore
+
+    def __set__(self, obj: "ExplodedDeb822SourceEntry", value: T) -> None:
+        obj.split_out()
+        self.parent.__set__(obj.parent, value)  # type: ignore
 
 
 def DeprecatedProperty(prop: T) -> T:
     return prop
 
 
+def _null_weakref() -> None:
+    """Behaves like an expired weakref.ref, returning None"""
+    return None
+
+
 class Deb822SourceEntry:
-    def __init__(self, section: Optional[Union[_deb822.Section, str]], file: str):
+    def __init__(
+        self,
+        section: _deb822.Section | str | None,
+        file: str,
+        list: Optional["SourcesList"] = None,
+    ):
         if section is None:
             self.section = _deb822.Section("")
         elif isinstance(section, str):
@@ -150,7 +171,14 @@ class Deb822SourceEntry:
 
         self._line = str(self.section)
         self.file = file
-        self.template: Optional[Template] = None  # type DistInfo.Suite
+        self.template: Template | None = None  # type DistInfo.Suite
+        self.may_merge = False
+        self._children = weakref.WeakSet["ExplodedDeb822SourceEntry"]()
+
+        if list:
+            self._list: Callable[[], SourcesList | None] = weakref.ref(list)
+        else:
+            self._list = _null_weakref
 
     def __eq__(self, other: Any) -> Any:
         #  FIXME: Implement plurals more correctly
@@ -184,14 +212,15 @@ class Deb822SourceEntry:
         self.section.header = comment
 
     @property
-    def trusted(self) -> Optional[bool]:
+    def trusted(self) -> bool | None:
+        """Return the value of the Trusted field"""
         try:
             return apt_pkg.string_to_bool(self.section["Trusted"])
         except KeyError:
             return None
 
     @trusted.setter
-    def trusted(self, value: Optional[bool]) -> None:
+    def trusted(self, value: bool | None) -> None:
         if value is None:
             try:
                 del self.section["Trusted"]
@@ -236,29 +265,252 @@ class Deb822SourceEntry:
         """Deprecated (for deb822) accessor for .disabled"""
         self.disabled = not enabled
 
+    def merge(self, other: "AnySourceEntry") -> bool:
+        """Merge the two entries if they are compatible."""
+        if (
+            not self.may_merge
+            and self.template is None
+            and not all(child.template for child in self._children)
+        ):
+            return False
+        if self.file != other.file:
+            return False
+        if not isinstance(other, Deb822SourceEntry):
+            return False
+        if self.comment != other.comment and not any(
+            "Added by software-properties" in c for c in (self.comment, other.comment)
+        ):
+            return False
+
+        for tag in set(list(self.section.tags) + list(other.section.tags)):
+            if tag.lower() in (
+                "types",
+                "uris",
+                "suites",
+                "components",
+                "architectures",
+                "signed-by",
+            ):
+                continue
+            in_self = self.section.get(tag, None)
+            in_other = other.section.get(tag, None)
+            if in_self != in_other:
+                return False
+
+        if (
+            sum(
+                [
+                    set(self.types) != set(other.types),
+                    set(self.uris) != set(other.uris),
+                    set(self.suites) != set(other.suites),
+                    set(self.comps) != set(other.comps),
+                    set(self.architectures) != set(other.architectures),
+                ]
+            )
+            > 1
+        ):
+            return False
+
+        for typ in other.types:
+            if typ not in self.types:
+                self.types += [typ]
+
+        for uri in other.uris:
+            if uri not in self.uris:
+                self.uris += [uri]
+
+        for suite in other.suites:
+            if suite not in self.suites:
+                self.suites += [suite]
+
+        for component in other.comps:
+            if component not in self.comps:
+                self.comps += [component]
+
+        for arch in other.architectures:
+            if arch not in self.architectures:
+                self.architectures += [arch]
+
+        return True
+
+    def _reparent_children(self, to: "Deb822SourceEntry") -> None:
+        """If we end up being split, check if any of our children need to be reparented to the new parent."""
+        for child in self._children:
+            for typ in to.types:
+                for uri in to.uris:
+                    for suite in to.suites:
+                        if (child._type, child._uri, child._suite) == (typ, uri, suite):
+                            assert child.parent == self
+                            child._parent = weakref.ref(to)
+
+
+class ExplodedDeb822SourceEntry:
+    """This represents a bit of a deb822 paragraph corresponding to a legacy sources.list entry"""
+
+    # Mostly we use slots to prevent accidentally assigning unproxied attributes
+    __slots__ = ["_parent", "_type", "_uri", "_suite", "template", "__weakref__"]
+
+    def __init__(self, parent: Deb822SourceEntry, typ: str, uri: str, suite: str):
+        self._parent = weakref.ref(parent)
+        self._type = typ
+        self._uri = uri
+        self._suite = suite
+        self.template = parent.template
+        parent._children.add(self)
+
+    @property
+    def parent(self) -> Deb822SourceEntry:
+        if self._parent is not None:
+            if (parent := self._parent()) is not None:
+                return parent
+        raise ValueError("The parent entry is no longer valid")
+
+    @property
+    def uri(self) -> str:
+        self.__check_valid()
+        return self._uri
+
+    @uri.setter
+    def uri(self, uri: str) -> None:
+        self.split_out()
+        self.parent.uris = [u if u != self._uri else uri for u in self.parent.uris]
+        self._uri = uri
+
+    @property
+    def types(self) -> list[str]:
+        return [self.type]
+
+    @property
+    def suites(self) -> list[str]:
+        return [self.dist]
+
+    @property
+    def uris(self) -> list[str]:
+        return [self.uri]
+
+    @property
+    def type(self) -> str:
+        self.__check_valid()
+        return self._type
+
+    @type.setter
+    def type(self, typ: str) -> None:
+        self.split_out()
+        self.parent.types = [typ]
+        self._type = typ
+        self.__check_valid()
+        assert self._type == typ
+        assert self.parent.types == [self._type]
+
+    @property
+    def dist(self) -> str:
+        self.__check_valid()
+        return self._suite
+
+    @dist.setter
+    def dist(self, suite: str) -> None:
+        self.split_out()
+        self.parent.suites = [suite]
+        self._suite = suite
+        self.__check_valid()
+        assert self._suite == suite
+        assert self.parent.suites == [self._suite]
+
+    def __check_valid(self) -> None:
+        if self.parent._list() is None:
+            raise ValueError("The parent entry is dead")
+        for type in self.parent.types:
+            for uri in self.parent.uris:
+                for suite in self.parent.suites:
+                    if (type, uri, suite) == (self._type, self._uri, self._suite):
+                        return
+        raise ValueError(f"Could not find parent of {self}")
+
+    def split_out(self) -> None:
+        parent = self.parent
+        if (parent.types, parent.uris, parent.suites) == (
+            [self._type],
+            [self._uri],
+            [self._suite],
+        ):
+            return
+        sources_list = parent._list()
+        if sources_list is None:
+            raise ValueError("The parent entry is dead")
+
+        try:
+            index = sources_list.list.index(parent)
+        except ValueError as e:
+            raise ValueError(
+                f"Parent entry for partial deb822 {self} no longer valid"
+            ) from e
+
+        sources_list.remove(parent)
+
+        reparented = False
+        for type in reversed(parent.types):
+            for uri in reversed(parent.uris):
+                for suite in reversed(parent.suites):
+                    new = Deb822SourceEntry(
+                        section=_deb822.Section(parent.section),
+                        file=parent.file,
+                        list=sources_list,
+                    )
+                    new.types = [type]
+                    new.uris = [uri]
+                    new.suites = [suite]
+                    new.may_merge = True
+
+                    parent._reparent_children(new)
+                    sources_list.list.insert(index, new)
+                    if (type, uri, suite) == (self._type, self._uri, self._suite):
+                        self._parent = weakref.ref(new)
+                        reparented = True
+        if not reparented:
+            raise ValueError(f"Could not find parent of {self}")
+
+    def __repr__(self) -> str:
+        return f"<child {self._type} {self._uri} {self._suite} of {self._parent}"
+
+    architectures = ExplodedEntryProperty(Deb822SourceEntry.architectures)
+    comps = ExplodedEntryProperty(Deb822SourceEntry.comps)
+    invalid = ExplodedEntryProperty(Deb822SourceEntry.invalid)
+    disabled = ExplodedEntryProperty[bool](Deb822SourceEntry.disabled)  # type: ignore
+    trusted = ExplodedEntryProperty(Deb822SourceEntry.trusted)
+    comment = ExplodedEntryProperty(Deb822SourceEntry.comment)
+
+    def set_enabled(self, enabled: bool) -> None:
+        """Set the source to enabled."""
+        self.disabled = not enabled
+
+    @property
+    def file(self) -> str:
+        """Return the file."""
+        return self.parent.file
+
 
 class SourceEntry:
     """single sources.list entry"""
 
-    def __init__(self, line: str, file: Optional[str] = None):
+    def __init__(self, line: str, file: str | None = None):
         self.invalid = False  # is the source entry valid
         self.disabled = False  # is it disabled ('#' in front)
         self.type = ""  # what type (deb, deb-src)
-        self.architectures: List[str] = []  # architectures
-        self.trusted: Optional[bool] = None  # Trusted
+        self.architectures: list[str] = []  # architectures
+        self.trusted: bool | None = None  # Trusted
         self.uri = ""  # base-uri
         self.dist = ""  # distribution (dapper, edgy, etc)
-        self.comps: List[str] = []  # list of available componetns (may empty)
+        self.comps: list[str] = []  # list of available componetns (may empty)
         self.comment = ""  # (optional) comment
         self.line = line  # the original sources.list line
         if file is None:
-            file = apt_pkg.config.find_dir("Dir::Etc") + apt_pkg.config.find(
-                "Dir::Etc::sourcelist"
-            )
+            file = apt_pkg.config.find_file("Dir::Etc::sourcelist")
+        if file.endswith(".sources"):
+            raise ValueError("Classic SourceEntry cannot be written to .sources file")
         self.file = file  # the file that the entry is located in
         self.parse(line)
-        self.template: Optional[Template] = None  # type DistInfo.Suite
-        self.children: List[SourceEntry] = []
+        self.template: Template | None = None  # type DistInfo.Suite
+        self.children: list[SourceEntry] = []
 
     def __eq__(self, other: Any) -> Any:
         """equal operator for two sources.list entries"""
@@ -271,7 +523,7 @@ class SourceEntry:
         )
 
     @staticmethod
-    def mysplit(line: str) -> List[str]:
+    def mysplit(line: str) -> list[str]:
         """a split() implementation that understands the sources.list
         format better and takes [] into account (for e.g. cdroms)"""
         line = line.strip()
@@ -398,7 +650,7 @@ class SourceEntry:
         line += self.type
 
         if self.architectures and self.trusted is not None:
-            line += " [arch=%s trusted=%s]" % (
+            line += " [arch={} trusted={}]".format(
                 ",".join(self.architectures),
                 "yes" if self.trusted else "no",
             )
@@ -406,7 +658,7 @@ class SourceEntry:
             line += " [trusted=%s]" % ("yes" if self.trusted else "no")
         elif self.architectures:
             line += " [arch=%s]" % ",".join(self.architectures)
-        line += " %s %s" % (self.uri, self.dist)
+        line += f" {self.uri} {self.dist}"
         if len(self.comps) > 0:
             line += " " + " ".join(self.comps)
         if self.comment != "":
@@ -415,32 +667,35 @@ class SourceEntry:
         return line
 
     @property
-    def types(self) -> List[str]:
+    def types(self) -> list[builtins.str]:
         """deb822 compatible accessor for the type"""
         return [self.type]
 
     @property
-    def uris(self) -> List[str]:
+    def uris(self) -> list[builtins.str]:
         """deb822 compatible accessor for the uri"""
         return [self.uri]
 
     @property
-    def suites(self) -> List[str]:
+    def suites(self) -> list[builtins.str]:
         """deb822 compatible accessor for the suite"""
         return [self.dist]
 
 
 AnySourceEntry = Union[SourceEntry, Deb822SourceEntry]
+AnyExplodedSourceEntry = Union[
+    SourceEntry, Deb822SourceEntry, ExplodedDeb822SourceEntry
+]
 
 
-class NullMatcher(object):
+class NullMatcher:
     """a Matcher that does nothing"""
 
-    def match(self, s: AnySourceEntry) -> bool:
+    def match(self, s: AnyExplodedSourceEntry) -> bool:
         return True
 
 
-class SourcesList(object):
+class SourcesList:
     """represents the full sources.list + sources.list.d file"""
 
     def __init__(
@@ -450,8 +705,8 @@ class SourcesList(object):
         *,
         deb822: bool = False,
     ):
-        self.list: List[AnySourceEntry] = []  # the actual SourceEntries Type
-        self.matcher: Union[NullMatcher, SourceEntryMatcher]
+        self.list: list[AnySourceEntry] = []  # the actual SourceEntries Type
+        self.matcher: NullMatcher | SourceEntryMatcher
         if withMatcher:
             self.matcher = SourceEntryMatcher(matcherPath)
         else:
@@ -464,11 +719,11 @@ class SourcesList(object):
         self.list = []
         # read sources.list
         file = apt_pkg.config.find_file("Dir::Etc::sourcelist")
-        if os.path.exists(file):
+        if file != "/dev/null" and os.path.exists(file):
             self.load(file)
         # read sources.list.d
         partsdir = apt_pkg.config.find_dir("Dir::Etc::sourceparts")
-        if os.path.exists(partsdir):
+        if partsdir != "/dev/null" and os.path.exists(partsdir):
             for file in os.listdir(partsdir):
                 if (self.deb822 and file.endswith(".sources")) or file.endswith(
                     ".list"
@@ -482,15 +737,13 @@ class SourcesList(object):
     def __iter__(self) -> Iterator[AnySourceEntry]:
         """simple iterator to go over self.list, returns SourceEntry
         types"""
-        for entry in self.list:
-            yield entry
+        yield from self.list
 
-    # typing: ignore
     def __find(
-        self, *predicates: Callable[[AnySourceEntry], bool], **attrs: Any
-    ) -> Iterator[AnySourceEntry]:
+        self, *predicates: Callable[[AnyExplodedSourceEntry], bool], **attrs: Any
+    ) -> Iterator[AnyExplodedSourceEntry]:
         uri = attrs.pop("uri", None)
-        for source in self.list:
+        for source in self.exploded_list():
             if uri and source.uri and uri.rstrip("/") != source.uri.rstrip("/"):
                 continue
             if all(getattr(source, key) == attrs[key] for key in attrs) and all(
@@ -503,12 +756,13 @@ class SourcesList(object):
         type: str,
         uri: str,
         dist: str,
-        orig_comps: List[str],
+        orig_comps: list[str],
         comment: str = "",
         pos: int = -1,
-        file: Optional[str] = None,
+        file: str | None = None,
         architectures: Iterable[str] = [],
-    ) -> AnySourceEntry:
+        parent: AnyExplodedSourceEntry | None = None,
+    ) -> AnyExplodedSourceEntry:
         """
         Add a new source to the sources.list.
         The method will search for existing matching repos and will try to
@@ -562,8 +816,15 @@ class SourcesList(object):
                     return source
 
         new_entry: AnySourceEntry
-        if file is not None and file.endswith(".sources"):
-            new_entry = Deb822SourceEntry(None, file=file)
+        if file is None:
+            file = apt_pkg.config.find_file("Dir::Etc::sourcelist")
+        if file.endswith(".sources"):
+            new_entry = Deb822SourceEntry(None, file=file, list=self)
+            if parent:
+                parent = getattr(parent, "parent", parent)
+                assert isinstance(parent, Deb822SourceEntry)
+                for k in parent.section.tags:
+                    new_entry.section[k] = parent.section[k]
             new_entry.types = [type]
             new_entry.uris = [uri]
             new_entry.suites = [dist]
@@ -597,8 +858,11 @@ class SourcesList(object):
             self.list.insert(pos, new_entry)
         return new_entry
 
-    def remove(self, source_entry: SourceEntry) -> None:
+    def remove(self, source_entry: AnyExplodedSourceEntry) -> None:
         """remove the specified entry from the sources.list"""
+        if isinstance(source_entry, ExplodedDeb822SourceEntry):
+            source_entry.split_out()
+            source_entry = source_entry.parent
         self.list.remove(source_entry)
 
     def restore_backup(self, backup_ext: str) -> None:
@@ -612,7 +876,7 @@ class SourcesList(object):
             if os.path.exists(file + backup_ext):
                 shutil.copy(file + backup_ext, file)
 
-    def backup(self, backup_ext: Optional[str] = None) -> str:
+    def backup(self, backup_ext: str | None = None) -> str:
         """make a backup of the current source files, if no backup extension
         is given, the current date/time is used (and returned)"""
         already_backuped: Iterable[str] = set()
@@ -620,26 +884,49 @@ class SourcesList(object):
             backup_ext = time.strftime("%y%m%d.%H%M")
         for source in self.list:
             if source.file not in already_backuped and os.path.exists(source.file):
-                shutil.copy(source.file, "%s%s" % (source.file, backup_ext))
+                shutil.copy(source.file, f"{source.file}{backup_ext}")
         return backup_ext
 
     def load(self, file: str) -> None:
         """(re)load the current sources"""
         try:
-            with open(file, "r") as f:
+            with open(file) as f:
                 if file.endswith(".sources"):
                     for section in _deb822.File(f):
-                        self.list.append(Deb822SourceEntry(section, file))
+                        self.list.append(Deb822SourceEntry(section, file, list=self))
                 else:
                     for line in f:
                         source = SourceEntry(line, file)
                         self.list.append(source)
         except Exception as exc:
-            logging.warning("could not open file '%s': %s\n" % (file, exc))
+            logging.warning(f"could not open file '{file}': {exc}\n")
+
+    def index(self, entry: AnyExplodedSourceEntry) -> int:
+        if isinstance(entry, ExplodedDeb822SourceEntry):
+            return self.list.index(entry.parent)
+        return self.list.index(entry)
+
+    def merge(self) -> None:
+        """Merge consecutive entries that have been split back together."""
+        merged = True
+        while merged:
+            i = 0
+            merged = False
+            while i + 1 < len(self.list):
+                entry = self.list[i]
+                if isinstance(entry, Deb822SourceEntry):
+                    j = i + 1
+                    while j < len(self.list):
+                        if entry.merge(self.list[j]):
+                            del self.list[j]
+                            merged = True
+                        else:
+                            j += 1
+                i += 1
 
     def save(self) -> None:
         """save the current sources"""
-        files: Dict[str, io.TextIOWrapper] = {}
+        files: dict[str, io.TextIOWrapper] = {}
         # write an empty default config file if there aren't any sources
         if len(self.list) == 0:
             path = apt_pkg.config.find_file("Dir::Etc::sourcelist")
@@ -653,11 +940,12 @@ class SourcesList(object):
                 f.write(header)
             return
 
+        self.merge()
         try:
             for source in self.list:
                 if source.file not in files:
                     files[source.file] = open(source.file, "w")
-                elif source.file.endswith(".sources"):
+                elif isinstance(source, Deb822SourceEntry):
                     files[source.file].write("\n")
                 files[source.file].write(source.str())
         finally:
@@ -666,10 +954,10 @@ class SourcesList(object):
 
     def check_for_relations(
         self, sources_list: Iterable[AnySourceEntry]
-    ) -> Tuple[List[AnySourceEntry], Dict[Template, List[AnySourceEntry]]]:
+    ) -> tuple[list[AnySourceEntry], dict[Template, list[AnySourceEntry]]]:
         """get all parent and child channels in the sources list"""
         parents = []
-        used_child_templates: Dict[Template, List[AnySourceEntry]] = {}
+        used_child_templates: dict[Template, list[AnySourceEntry]] = {}
         for source in sources_list:
             # try to avoid checking uninterressting sources
             if source.template is None:
@@ -690,14 +978,40 @@ class SourcesList(object):
         # print self.parents
         return (parents, used_child_templates)
 
+    def exploded_list(self) -> list[AnyExplodedSourceEntry]:
+        """Present an exploded view of the list where each entry corresponds exactly to a Release file.
 
-class SourceEntryMatcher(object):
+        A release file is uniquely identified by the triplet (type, uri, suite). Old style entries
+        always referred to a single release file, but deb822 entries allow multiple values for each
+        of those fields.
+        """
+        res: list[AnyExplodedSourceEntry] = []
+        for entry in self.list:
+            if isinstance(entry, SourceEntry):
+                res.append(entry)
+            elif (
+                len(entry.types) == 1
+                and len(entry.uris) == 1
+                and len(entry.suites) == 1
+            ):
+                res.append(entry)
+            else:
+                for typ in entry.types:
+                    for uri in entry.uris:
+                        for sui in entry.suites:
+                            res.append(ExplodedDeb822SourceEntry(entry, typ, uri, sui))
+                            self.matcher.match(res[-1])
+
+        return res
+
+
+class SourceEntryMatcher:
     """matcher class to make a source entry look nice
     lots of predefined matchers to make it i18n/gettext friendly
     """
 
     def __init__(self, matcherPath: str):
-        self.templates: List[Template] = []
+        self.templates: list[Template] = []
         # Get the human readable channel and comp names from the channel .infos
         spec_files = glob.glob("%s/*.info" % matcherPath)
         for f in spec_files:
@@ -710,7 +1024,7 @@ class SourceEntryMatcher(object):
                     self.templates.append(template)
         return
 
-    def match(self, source: AnySourceEntry) -> bool:
+    def match(self, source: AnyExplodedSourceEntry) -> bool:
         """Add a matching template to the source"""
         found = False
         for template in self.templates:

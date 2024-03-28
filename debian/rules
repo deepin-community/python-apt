@@ -42,4 +42,7 @@ override_dh_compress:
 	dh_compress -X.js -X_static/* -X _sources/* -X_sources/*/* -X.inv
 
 # We ignore failures on hurd, since its locking is broken
-override_dh_auto_test: 
+override_dh_auto_test: export PYBUILD_SYSTEM=custom
+override_dh_auto_test: export PYBUILD_TEST_ARGS=env PYTHONPATH={build_dir} {interpreter} tests/test_all.py
+override_dh_auto_test:
+	dh_auto_test || [ "$(DEB_BUILD_ARCH_OS)" = "hurd" ];
