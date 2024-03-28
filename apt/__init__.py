@@ -18,13 +18,14 @@
 #  USA
 # import the core of apt_pkg
 """High-Level Interface for working with apt."""
-from __future__ import print_function
-
 import apt_pkg
 
+from apt.cache import Cache as Cache
+from apt.cache import ProblemResolver as ProblemResolver
+
 # import some fancy classes
-from apt.package import Package as Package, Version as Version
-from apt.cache import Cache as Cache, ProblemResolver as ProblemResolver
+from apt.package import Package as Package
+from apt.package import Version as Version
 
 Cache  # pyflakes
 ProblemResolver  # pyflakes

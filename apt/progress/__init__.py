@@ -23,9 +23,6 @@ This package provides progress reporting for the python-apt package. The module
 for terminals, etc.
 """
 
-from __future__ import print_function
+from collections.abc import Sequence
 
-from typing import Sequence
-
-
-__all__ = []  # type: Sequence[str]
+__all__: Sequence[str] = []

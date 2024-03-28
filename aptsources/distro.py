@@ -25,10 +25,10 @@
 
 import gettext
 import logging
+import os
 import re
 import shlex
-import os
-
+import warnings
 from xml.etree.ElementTree import ElementTree
 
 from apt_pkg import gettext as _
@@ -38,7 +38,7 @@ class NoDistroTemplateException(Exception):
     pass
 
 
-class Distribution(object):
+class Distribution:
     def __init__(self, id, codename, description, release, is_like=[]):
         """Container for distribution specific informations"""
         # LSB information
@@ -97,7 +97,7 @@ class Distribution(object):
         cdrom_comps = []
         enabled_comps = []
         # source_code = []
-        for source in self.sourceslist.list:
+        for source in self.sourceslist.exploded_list():
             if (
                 not source.invalid
                 and self.is_codename(source.dist)
@@ -289,7 +289,16 @@ class Distribution(object):
             comps = list(self.enabled_comps)
         if type is None:
             type = self.binary_type
-        new_source = self.sourceslist.add(type, uri, dist, comps, comment)
+
+        parent = None
+        file = None
+        for parent in reversed(self.child_sources) or reversed(self.main_sources):
+            file = parent.file
+            break
+
+        new_source = self.sourceslist.add(
+            type, uri, dist, comps, comment, parent=parent, file=file
+        )
         # if source code is enabled add a deb-src line after the new
         # source
         if self.get_source_code and type == self.binary_type:
@@ -300,6 +309,7 @@ class Distribution(object):
                 comps,
                 comment,
                 file=new_source.file,
+                parent=new_source,
                 pos=self.sourceslist.list.index(new_source) + 1,
             )
 
@@ -310,12 +320,13 @@ class Distribution(object):
 
         comp:         the component that should be enabled
         """
-        comps = set([comp])
+        comps = list([comp])
         # look for parent components that we may have to add
         for source in self.main_sources:
             for c in source.template.components:
                 if c.name == comp and c.parent_component:
-                    comps.add(c.parent_component)
+                    if c.parent_component not in comps:
+                        comps.append(c.parent_component)
         for c in comps:
             self._enable_component(c)
 
@@ -335,7 +346,7 @@ class Distribution(object):
             if comp in comps_per_dist[source.dist]:
                 return
             # add it
-            source.comps += [comp]
+            source.comps = source.comps + [comp]
             comps_per_dist[source.dist].add(comp)
 
         sources = []
@@ -394,7 +405,9 @@ class Distribution(object):
             sources.extend(self.main_sources)
         for source in sources:
             if comp in source.comps:
-                source.comps.remove(comp)
+                comps = source.comps
+                comps.remove(comp)
+                source.comps = comps
                 if len(source.comps) < 1:
                     self.sourceslist.remove(source)
 
@@ -490,8 +503,8 @@ class UbuntuRTMDistribution(UbuntuDistribution):
 
 def _lsb_release():
     """Call lsb_release --idrc and return a mapping."""
-    from subprocess import Popen, PIPE
     import errno
+    from subprocess import PIPE, Popen
 
     result = {
         "Codename": "sid",
@@ -512,14 +525,9 @@ def _lsb_release():
 
 def _system_image_channel():
     """Get the current channel from system-image-cli -i if possible."""
-    from subprocess import Popen, PIPE
     import errno
+    from subprocess import DEVNULL, PIPE, Popen
 
-    try:
-        from subprocess import DEVNULL
-    except ImportError:
-        # no DEVNULL in 2.7
-        DEVNULL = os.open(os.devnull, os.O_RDWR)
     try:
         out = Popen(
             ["system-image-cli", "-i"],
@@ -565,7 +573,7 @@ class _OSRelease:
         self.result["Release"] = self.result.get("VERSION_ID")
 
     def parse(self):
-        f = open(self.file, "r")
+        f = open(self.file)
         for line in f:
             line = line.strip()
             if not line:
@@ -598,6 +606,10 @@ def get_distro(id=None, codename=None, description=None, release=None, is_like=[
     """
     # make testing easier
     if not (id and codename and description and release):
+        if id or codename or description or release:
+            warnings.warn(
+                "Provided only a subset of arguments", DeprecationWarning, stacklevel=2
+            )
         os_release = _OSRelease()
         os_result = []
         lsb_result = _lsb_release()

@@ -16,19 +16,17 @@
 # You should have received a copy of the GNU General Public License along with
 # this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
-from __future__ import print_function
-
 import datetime
 import os
 
-from typing import Optional, Tuple
-
-import apt
 import apt_pkg
 
+import apt
 
-def get_maintenance_end_date(release_date, m_months):
-    # type: (datetime.datetime, int) -> Tuple[int, int]
+
+def get_maintenance_end_date(
+    release_date: datetime.datetime, m_months: int
+) -> tuple[int, int]:
     """
     get the (year, month) tuple when the maintenance for the distribution
     ends. Needs the data of the release and the number of months that
@@ -46,8 +44,7 @@ def get_maintenance_end_date(release_date, m_months):
     return (support_end_year, support_end_month)
 
 
-def get_release_date_from_release_file(path):
-    # type: (str) -> Optional[int]
+def get_release_date_from_release_file(path: str) -> int | None:
     """
     return the release date as time_t for the given release file
     """
@@ -63,8 +60,9 @@ def get_release_date_from_release_file(path):
         return apt_pkg.str_to_time(date)
 
 
-def get_release_filename_for_pkg(cache, pkgname, label, release):
-    # type: (apt.Cache, str, str, str) -> Optional[str]
+def get_release_filename_for_pkg(
+    cache: apt.Cache, pkgname: str, label: str, release: str
+) -> str | None:
     "get the release file that provides this pkg"
     if pkgname not in cache:
         return None
@@ -91,7 +89,9 @@ def get_release_filename_for_pkg(cache, pkgname, label, release):
             if indexfile and indexfile.describe == m.describe and indexfile.is_trusted:
                 dirname = apt_pkg.config.find_dir("Dir::State::lists")
                 for relfile in ["InRelease", "Release"]:
-                    name = apt_pkg.uri_to_filename(metaindex.uri) + "dists_%s_%s" % (
+                    name = apt_pkg.uri_to_filename(
+                        metaindex.uri
+                    ) + "dists_{}_{}".format(
                         metaindex.dist,
                         relfile,
                     )
