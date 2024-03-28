@@ -1,3 +1,110 @@
+python-apt (2.7.7) unstable; urgency=medium
+
+  * Remove obsolete python3-distutils build-depends (Closes: #1065922)
+
+ -- Julian Andres Klode <jak@debian.org>  Fri, 22 Mar 2024 23:25:32 +0100
+
+python-apt (2.7.6) unstable; urgency=medium
+
+  [ Ravi Kant Sharma ]
+  * Expose the phased updates APIs in apt 2.7.11
+
+ -- Julian Andres Klode <jak@debian.org>  Wed, 21 Feb 2024 19:01:25 +0100
+
+python-apt (2.7.5) unstable; urgency=medium
+
+  * Improve development workflow and CI with pre-commit hooks:
+    - Remove obsolete .travis.yml
+    - Setup pre-commit with various formatting and mypy hooks and run it
+    - Add mypy.ini
+    - pre-commit: mypy: Only filter out sourceslist and distro in aptsources
+  * Build fixes:
+    - setup.py: Strip whitespace in version
+  * Fixes to deb822 support:
+    - Make sure we don't construct SourceEntry for .sources file
+    - Figure out file to add before deciding between deb822 and legacy
+    - Ensure deb822 keys are case-insensitive
+    - Pass parent for deb-src entries too
+  * Fixes to the test suite:
+    - tests: Ensure we parsed the correct main and child sources
+    - tests: Adjust test suite to pass all arguments to get_distro()
+      Fixing the test suite regressions that plagued (random) executions.
+  * Fixes for aptsources.distinfo to improve error handling for mirror files:
+    - data: Blankon: Use relative mirror file location
+    - distinfo: Include file name if we can't read mirror file
+  * Deprecations:
+    - aptsources: get_distro: Warn if only some arguments are provided. This
+      caused the test suite failures. It will soon become a ValueError.
+
+ -- Julian Andres Klode <jak@debian.org>  Fri, 12 Jan 2024 17:59:34 +0100
+
+python-apt (2.7.4) unstable; urgency=medium
+
+  * aptsources: Fix path to Dir::Etc::SourcesList
+
+ -- Julian Andres Klode <jak@debian.org>  Fri, 22 Dec 2023 12:14:54 +0100
+
+python-apt (2.7.3) unstable; urgency=medium
+
+  * Handle null pointer deference in error handler (Closes: #1058904)
+  * Actually register apt_pkg.Warning object
+  * apt_inst: Import apt_pkg.Warning and export it again (Closes: #1058657)
+  * d/tests/control: Add allow-stderr Restriction
+
+ -- Julian Andres Klode <jak@debian.org>  Thu, 21 Dec 2023 16:00:06 +0100
+
+python-apt (2.7.2) unstable; urgency=medium
+
+  * Convert from type comments to type annotations (Closes: #1058118)
+  * Run pyupgrade
+  * Run pyupgrade --py311-plus
+  * Run autoflake
+  * Run isort
+
+ -- Julian Andres Klode <jak@debian.org>  Wed, 13 Dec 2023 16:37:57 +0100
+
+python-apt (2.7.1) unstable; urgency=medium
+
+  [ Aristo Chen ]
+  * apt/package.py: fix typo from 'unkown' to 'unknown'
+
+  [ Julian Andres Klode ]
+  * Issue warnings as apt_pkg.Warning instead of discarding when there is no error
+  * deb822: Allow copying a section by constructor
+  * aptsources.distro: Order parent components predictable when adding
+  * Added exploded views to deb822 sources to support aptsources.distro which
+    will manage potentially only parts of a single paragraph:
+    - Initial support for exploded views of deb822 entries
+    - sourceslist: add parent argument to add() to copy fields
+    - sourceslist: Allow merging official distro sources
+    - ExplodedDeb822SourceEntry: Add file property
+    - Draft: sourceslist: add: Check for matches in the exploded list
+    - sourceslist: Add SourcesList.index() method to index items
+    - sourceslist: Fix merging of entries
+    - distro: add_source: Insert new source after last official source
+    - distro: Handle .comps being a property, not updatable in-place
+    - sourceslist: Skip sourceslist, sourcesparts being /dev/null
+    - deb822: Improve parsing of section separators
+    - deb822: Fix File.__str__() to not include 2 empty lines
+    - tests: deb822: Check enable/disable component layout behavior
+    - SourcesList.index: Return int in index(), not bool
+    - tests: deb822: Check enabling proposed and disabling it
+
+  [ Jeroen Dekkers ]
+  * Do not return the empty string in installed_files
+
+  [ Bruce Duncan ]
+  * Remove abandoned debugging messages
+  * Remove unused debugging
+
+  [ Max-Julian Pogner ]
+  * FIX: write snake_case in documentation, as this is the documented method name.
+
+  [ Alexandre Detiste ]
+  * remove Python2 crumbs
+
+ -- Julian Andres Klode <juliank@ubuntu.com>  Wed, 13 Dec 2023 14:15:56 +0100
+
 python-apt (2.7.0) unstable; urgency=medium
 
   [ Cory Todd ]

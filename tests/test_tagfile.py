@@ -1,5 +1,4 @@
 #!/usr/bin/python3
-# -*- coding: utf-8 -*-
 #
 # Copyright (C) 2010 Michael Vogt <mvo@ubuntu.com>
 # Copyright (C) 2012 Canonical Ltd.
@@ -10,9 +9,6 @@
 # notice and this notice are preserved.
 """Unit tests for verifying the correctness of apt_pkg.TagFile"""
 
-from __future__ import print_function, unicode_literals
-
-import io
 import glob
 import os
 import shutil
@@ -27,7 +23,6 @@ if libdir:
     sys.path.insert(0, libdir)
 
 import apt_pkg
-
 import testcommon
 
 
@@ -90,69 +85,39 @@ class TestTagFile(testcommon.TestCase):
     def test_utf8(self):
         value = "Tést Persön <test@example.org>"
         packages = os.path.join(self.temp_dir, "Packages")
-        with io.open(packages, "w", encoding="UTF-8") as packages_file:
+        with open(packages, "w", encoding="UTF-8") as packages_file:
             print("Maintainer: %s" % value, file=packages_file)
             print("", file=packages_file)
-        if sys.version < "3":
-            # In Python 2, test the traditional file interface.
-            with open(packages) as packages_file:
-                tagfile = apt_pkg.TagFile(packages_file)
-                tagfile.step()
-                self.assertEqual(value.encode("UTF-8"), tagfile.section["Maintainer"])
-        with io.open(packages, encoding="UTF-8") as packages_file:
+        with open(packages, encoding="UTF-8") as packages_file:
             tagfile = apt_pkg.TagFile(packages_file)
             tagfile.step()
-            if sys.version < "3":
-                self.assertEqual(value.encode("UTF-8"), tagfile.section["Maintainer"])
-            else:
-                self.assertEqual(value, tagfile.section["Maintainer"])
+            self.assertEqual(value, tagfile.section["Maintainer"])
 
     def test_latin1(self):
         value = "Tést Persön <test@example.org>"
         packages = os.path.join(self.temp_dir, "Packages")
-        with io.open(packages, "w", encoding="ISO-8859-1") as packages_file:
+        with open(packages, "w", encoding="ISO-8859-1") as packages_file:
             print("Maintainer: %s" % value, file=packages_file)
             print("", file=packages_file)
-        if sys.version < "3":
-            # In Python 2, test the traditional file interface.
-            with open(packages) as packages_file:
-                tagfile = apt_pkg.TagFile(packages_file)
-                tagfile.step()
-                self.assertEqual(
-                    value.encode("ISO-8859-1"), tagfile.section["Maintainer"]
-                )
-        with io.open(packages) as packages_file:
+        with open(packages) as packages_file:
             tagfile = apt_pkg.TagFile(packages_file, bytes=True)
             tagfile.step()
             self.assertEqual(value.encode("ISO-8859-1"), tagfile.section["Maintainer"])
-        if sys.version >= "3":
-            # In Python 3, TagFile can pick up the encoding of the file
-            # object.
-            with io.open(packages, encoding="ISO-8859-1") as packages_file:
-                tagfile = apt_pkg.TagFile(packages_file)
-                tagfile.step()
-                self.assertEqual(value, tagfile.section["Maintainer"])
+        with open(packages, encoding="ISO-8859-1") as packages_file:
+            tagfile = apt_pkg.TagFile(packages_file)
+            tagfile.step()
+            self.assertEqual(value, tagfile.section["Maintainer"])
 
     def test_mixed(self):
         value = "Tést Persön <test@example.org>"
         packages = os.path.join(self.temp_dir, "Packages")
-        with io.open(packages, "w", encoding="UTF-8") as packages_file:
+        with open(packages, "w", encoding="UTF-8") as packages_file:
             print("Maintainer: %s" % value, file=packages_file)
             print("", file=packages_file)
-        with io.open(packages, "a", encoding="ISO-8859-1") as packages_file:
+        with open(packages, "a", encoding="ISO-8859-1") as packages_file:
             print("Maintainer: %s" % value, file=packages_file)
             print("", file=packages_file)
-        if sys.version < "3":
-            # In Python 2, test the traditional file interface.
-            with open(packages) as packages_file:
-                tagfile = apt_pkg.TagFile(packages_file)
-                tagfile.step()
-                self.assertEqual(value.encode("UTF-8"), tagfile.section["Maintainer"])
-                tagfile.step()
-                self.assertEqual(
-                    value.encode("ISO-8859-1"), tagfile.section["Maintainer"]
-                )
-        with io.open(packages) as packages_file:
+        with open(packages) as packages_file:
             tagfile = apt_pkg.TagFile(packages_file, bytes=True)
             tagfile.step()
             self.assertEqual(value.encode("UTF-8"), tagfile.section["Maintainer"])
@@ -173,47 +138,47 @@ class TestTagSection(testcommon.TestCase):
     def test_write(self):
         ts = apt_pkg.TagSection("a: 1\nb: 2\nc: 3\n")
         outpath = os.path.join(self.temp_dir, "test")
-        with io.open(outpath, "w") as outfile:
+        with open(outpath, "w") as outfile:
             ts.write(outfile, [], [])
-        with io.open(outpath) as outfile:
+        with open(outpath) as outfile:
             self.assertEqual(outfile.read(), "a: 1\nb: 2\nc: 3\n")
 
     def test_write_order(self):
         ts = apt_pkg.TagSection("a: 1\nb: 2\nc: 3\n")
         outpath = os.path.join(self.temp_dir, "test")
-        with io.open(outpath, "w") as outfile:
+        with open(outpath, "w") as outfile:
             ts.write(outfile, ["a", "c", "b"], [])
-        with io.open(outpath) as outfile:
+        with open(outpath) as outfile:
             self.assertEqual(outfile.read(), "a: 1\nc: 3\nb: 2\n")
 
     def test_write_invalid_order(self):
         ts = apt_pkg.TagSection("a: 1\nb: 2\nc: 3\n")
         outpath = os.path.join(self.temp_dir, "test")
-        with io.open(outpath, "w") as outfile:
+        with open(outpath, "w") as outfile:
             self.assertRaises(TypeError, ts.write, outfile, ["a", 1, "b"], [])
 
     def test_write_remove(self):
         ts = apt_pkg.TagSection("a: 1\nb: 2\nc: 3\n")
         outpath = os.path.join(self.temp_dir, "test")
-        with io.open(outpath, "w") as outfile:
+        with open(outpath, "w") as outfile:
             ts.write(outfile, ["a", "c", "b"], [apt_pkg.TagRemove("a")])
-        with io.open(outpath) as outfile:
+        with open(outpath) as outfile:
             self.assertEqual(outfile.read(), "c: 3\nb: 2\n")
 
     def test_write_rewrite(self):
         ts = apt_pkg.TagSection("a: 1\nb: 2\nc: 3\n")
         outpath = os.path.join(self.temp_dir, "test")
-        with io.open(outpath, "w") as outfile:
+        with open(outpath, "w") as outfile:
             ts.write(outfile, ["a", "c", "b"], [apt_pkg.TagRewrite("a", "AA")])
-        with io.open(outpath) as outfile:
+        with open(outpath) as outfile:
             self.assertEqual(outfile.read(), "a: AA\nc: 3\nb: 2\n")
 
     def test_write_rename(self):
         ts = apt_pkg.TagSection("a: 1\nb: 2\nc: 3\n")
         outpath = os.path.join(self.temp_dir, "test")
-        with io.open(outpath, "w") as outfile:
+        with open(outpath, "w") as outfile:
             ts.write(outfile, ["a", "z", "b"], [apt_pkg.TagRename("c", "z")])
-        with io.open(outpath) as outfile:
+        with open(outpath) as outfile:
             self.assertEqual(outfile.read(), "a: 1\nz: 3\nb: 2\n")
 
 
