@@ -1,3 +1,9 @@
+python-apt (2.7.7deepin0) unstable; urgency=medium
+
+  * No source change upload against GCC 12.
+
+ -- Tianyu Chen <sweetyfish@deepin.org>  Fri, 20 Sep 2024 12:16:12 +0800
+
 python-apt (2.7.7) unstable; urgency=medium
 
   * Remove obsolete python3-distutils build-depends (Closes: #1065922)
