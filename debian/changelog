@@ -1,3 +1,9 @@
+python-apt (2.8.0deepin2) unstable; urgency=medium
+
+  * Fix invalid nullptr dereference in TagSection.keys() [CVE-2025-6966]
+
+ -- Tianyu Chen <sweetyfish@deepin.org>  Tue, 03 Feb 2026 20:14:47 +0800
+
 python-apt (2.8.0deepin1) unstable; urgency=medium
 
   * Fix FTBFS with Sphinx 8.0
