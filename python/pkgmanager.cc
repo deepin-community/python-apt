@@ -43,18 +43,26 @@ static PyObject *PkgManagerGetArchives(PyObject *Self,PyObject *Args)
    return HandleErrors(PyBool_FromLong(res));
 }
 
-static PyObject *PkgManagerDoInstall(PyObject *Self,PyObject *Args)
+static PyObject *PkgManagerDoInstall(PyObject *Self,PyObject *Args,PyObject *kwds)
 {
    //PkgManagerStruct &Struct = GetCpp<PkgManagerStruct>(Self);
    pkgPackageManager *pm = GetCpp<pkgPackageManager*>(Self);
    int status_fd = -1;
+   PyObject *pyprogress = NULL;
 
-   if (PyArg_ParseTuple(Args, "|i", &status_fd) == 0)
+   char *kwlist[] = {"status_fd","progress",0};
+   if (PyArg_ParseTupleAndKeywords(Args,kwds,"|iO", kwlist,&status_fd, &pyprogress) == 0)
       return 0;
 
-   APT::Progress::PackageManagerProgressFd progress(status_fd);
-
-   pkgPackageManager::OrderResult res = pm->DoInstall(&progress);
+   std::unique_ptr<APT::Progress::PackageManager> fdProgress;
+   APT::Progress::PackageManager *progress;
+   if (pyprogress != NULL) {
+       progress = GetCpp<APT::Progress::PackageManager*>(pyprogress);
+   } else {
+       fdProgress = std::make_unique<APT::Progress::PackageManagerProgressFd>(status_fd);
+       progress = fdProgress.get();
+   }
+   pkgPackageManager::OrderResult res = pm->DoInstall(progress);
 
    return HandleErrors(MkPyNumber(res));
 }
@@ -78,8 +86,8 @@ static PyMethodDef PkgManagerMethods[] =
     "get_archives(fetcher: Acquire, list: SourceList, recs: PackageRecords) -> bool\n\n"
     "Download the packages marked for installation via the Acquire object\n"
     "'fetcher', using the information found in 'list' and 'recs'."},
-   {"do_install",PkgManagerDoInstall,METH_VARARGS,
-    "do_install(status_fd: int) -> int\n\n"
+   {"do_install",(PyCFunction) PkgManagerDoInstall,METH_VARARGS|METH_KEYWORDS,
+    "do_install(status_fd: int, progress: PackageManagerProgress) -> int\n\n"
     "Install the packages and return one of the class constants\n"
     "RESULT_COMPLETED, RESULT_FAILED, RESULT_INCOMPLETE. The argument\n"
     "status_fd can be used to specify a file descriptor that APT will\n"
@@ -212,7 +220,6 @@ public:
 	 }
 	void callReset() { return pkgDPkgPM::Reset(); }
 	bool callConfigure(PkgIterator Pkg) { return pkgDPkgPM::Configure(Pkg); }
-	pkgOrderList *getOrderList() { return pkgPackageManager::List; }
 
         PyPkgManager(pkgDepCache *Cache) : pkgDPkgPM(Cache),pyinst(NULL) {};
 	PyObject *pyinst;

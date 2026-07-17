@@ -33,7 +33,6 @@ import apt
 
 
 class RegressionTestCase(testcommon.TestCase):
-
     """Test suite for LP: #981896, LP: #659438
     'Cannot locate a file for package X'
     """
@@ -63,9 +62,6 @@ Architecture: all"""
         self.cache.open()
 
     def tearDown(self):
-        # this resets the rootdir apt_pkg.config to ensure it does not
-        # "pollute" the later tests
-        apt.cache.Cache(rootdir="/")
         shutil.rmtree(self.chroot_path)
 
     def test_survive_reqreinst(self):

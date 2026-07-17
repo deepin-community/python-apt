@@ -1,16 +1,113 @@
-python-apt (2.8.0deepin2) unstable; urgency=medium
+python-apt (3.0.0) unstable; urgency=medium
 
-  * Fix invalid nullptr dereference in TagSection.keys() [CVE-2025-6966]
+  * Bump version to 3.0.0 to match APT and indicate stable series
+  * Refresh the mirror lists
 
- -- Tianyu Chen <sweetyfish@deepin.org>  Tue, 03 Feb 2026 20:14:47 +0800
+ -- Julian Andres Klode <jak@debian.org>  Tue, 08 Apr 2025 16:10:00 +0200
 
-python-apt (2.8.0deepin1) unstable; urgency=medium
+python-apt (2.9.9) unstable; urgency=medium
 
-  * Fix FTBFS with Sphinx 8.0
-    https://salsa.debian.org/apt-team/python-apt/-/commit/068f877
-  * Also translate Debian version 2.8.0deepin1 to 2.8.0+deepin1 for PEP0440.
+  * Adapt to libapt-pkg7.0 PPA
 
- -- Tianyu Chen <sweetyfish@deepin.org>  Wed, 15 Oct 2025 14:20:19 +0800
+ -- Julian Andres Klode <jak@debian.org>  Mon, 17 Feb 2025 10:39:47 +0100
+
+python-apt (2.9.8) unstable; urgency=medium
+
+  * test_lp659438.py: Remove broken apt.Cache(rootdir="/")
+
+ -- Julian Andres Klode <jak@debian.org>  Tue, 28 Jan 2025 20:52:20 +0100
+
+python-apt (2.9.7) unstable; urgency=medium
+
+  [ Julian Andres Klode ]
+  * Improve test suite reliability
+  * testcommon: Disable sandbox to avoid warnings
+  * Adapt test_signed_usable.py for signed-by
+  * apt.cache: Only set Dir::Bin::Dpkg if it exists in chroot
+  * apt.cache: Create some more required dirs on rootdir
+  * tests: Fix a couple of test suite warnings
+
+  [ Simon Chopin ]
+  * deb822: Better cope with sections without trailing newline
+
+ -- Julian Andres Klode <jak@debian.org>  Tue, 28 Jan 2025 18:39:13 +0100
+
+python-apt (2.9.6) unstable; urgency=high
+
+  * test-signed-usable-repo: Fake a new signature on 2019-12-17
+    (Closes: #1091571)
+  * Update mirrors
+
+ -- Julian Andres Klode <jak@debian.org>  Sat, 28 Dec 2024 21:49:45 +0100
+
+python-apt (2.9.5) unstable; urgency=high
+
+  * Remove tanglu information
+  * data: Fix mirror location file name
+  * urgency=high due to `Handle id being None in get_distro()` being blocked
+    by a mirror issue for some reason now.
+
+ -- Julian Andres Klode <jak@debian.org>  Fri, 20 Dec 2024 11:38:57 +0100
+
+python-apt (2.9.4) unstable; urgency=high
+
+  * pre-commit: update
+  * tests/test_tagfile.py: isort
+  * Fix FTBFS with Sphinx 8.0 (Closes: #1090037)
+  * tests, apt: run isort
+  * Update mirror lists
+  * urgency=high due to `Handle id being None in get_distro()` being blocked
+    by the sphinx issue.
+
+ -- Julian Andres Klode <jak@debian.org>  Tue, 17 Dec 2024 11:12:09 +0100
+
+python-apt (2.9.3) unstable; urgency=medium
+
+  * pkgmanager.cc: Fix lifetime of fdprogress, avoids hanging install
+  * aptsources/distro.py: Handle id being None in get_distro()
+  * Update mirrors
+
+ -- Julian Andres Klode <jak@debian.org>  Wed, 11 Dec 2024 16:29:14 +0100
+
+python-apt (2.9.2) unstable; urgency=medium
+
+  * aptsources: Distribution IDs are now lowercase
+  * aptsources: Handle missing VERSION_ID in os-release (Closes: #1088402)
+  * Hack around toolchain to pick std symbols from libstdc++ (Closes: #1088262)
+  * Update mirrors
+  * Strings are really lower case now, but old ones should continue to work
+
+ -- Julian Andres Klode <jak@debian.org>  Wed, 04 Dec 2024 18:04:04 +0100
+
+python-apt (2.9.1) unstable; urgency=medium
+
+  [ Michael Vogt ]
+  * python: expose APT::Progress::PackageManagerFancy
+
+  [ Corentin Noël ]
+  * aptsources: Use freedesktop_os_release instead of lsb_release
+  * aptsources: Allow to query the codenames the distro derives from
+
+  [ Julian Andres Klode ]
+  * Document that version_list is in descending order
+  * aptsources: Sort the list of sources.list.d sources (LP: #2089543)
+  * Remove apt.auth module, apt-key is going away (Closes: #1088222)
+  * setup.py: Stop overriding C++ standards version
+
+  [ Niels Thykier ]
+  * Mark `fakeroot` as a test-only build-dependency
+
+  [ Boyuan Yang ]
+  * Refresh Simplified Chinese (zh_CN) translation
+
+ -- Julian Andres Klode <jak@debian.org>  Mon, 25 Nov 2024 13:27:56 +0100
+
+python-apt (2.9.0) unstable; urgency=medium
+
+  * Revert "2.8.y: Run CI in noble and point gbp.conf at 2.8.y branch"
+  * Update pre-commit hooks and run them
+
+ -- Julian Andres Klode <jak@debian.org>  Thu, 02 May 2024 10:06:29 +0200
 
 python-apt (2.8.0) unstable; urgency=medium
 
