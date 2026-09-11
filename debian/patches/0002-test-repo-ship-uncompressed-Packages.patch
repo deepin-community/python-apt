@@ -1,0 +1,78 @@
+From: TuNaiChao <tunaichao@uniontech.com>
+Date: Mon, 15 Sep 2026 00:00:00 +0800
+Subject: Ship uncompressed Packages index in the test-repo fixtures
+
+test_apt_update serves copy: sources pointing at tests/data/test-repo
+and test-repo2, which only contained a compressed Packages.gz. apt
+2.8.0deepin13 in the build environment fails the fetch of the plain
+"Packages" index instead of falling back to the .gz variant, so the
+test errors with "Failed to stat .../test-repo/Packages". Ship the
+uncompressed index next to the compressed one so every apt version
+finds the file it looks up first.
+
+diff --git a/tests/data/test-repo/Packages b/tests/data/test-repo/Packages
+new file mode 100644
+index 0000000..fee02ac
+--- /dev/null
++++ b/tests/data/test-repo/Packages
+@@ -0,0 +1,27 @@
++Package: abrowser
++Priority: optional
++Section: web
++Installed-Size: 136
++Maintainer: Ubuntu Mozilla Team <ubuntu-mozillateam@lists.ubuntu.com>
++Architecture: all
++Source: firefox
++Version: 3.6.9+build1+nobinonly-0ubuntu1
++Depends: firefox, abrowser-branding
++Filename: pool/main/f/firefox/abrowser_3.6.9+build1+nobinonly-0ubuntu1_all.deb
++Size: 82324
++MD5sum: 3a8c96814b0201c285274fded3e2d203
++SHA1: 05a3c9d5ced88fc51f3aa3166b0ca4030dcc4e49
++SHA256: 1c3d03dfe4364394f89f453d46b81c2024996a81d929a5ed6e1803ad5f9a21e9
++Description: metapackage for the unbranded abrowser
++ ABrowser is an unbranded version of the popular Firefox webbrowser;
++ it is written in the XUL language and designed to be lightweight and
++ cross-platform.
++ .
++ This is a metapackage that will point to the latest abrowser package in
++ your distribution.
++ Don't remove this if you want to receive automatic major version upgrades
++ for this package in future.
++Xul-Appid: {ec8030f7-c20a-464f-9b0e-13a3a9e97384}
++Bugs: https://bugs.launchpad.net/ubuntu/+filebug
++Origin: Ubuntu
++Supported: 18m
+diff --git a/tests/data/test-repo2/Packages b/tests/data/test-repo2/Packages
+new file mode 100644
+index 0000000..fee02ac
+--- /dev/null
++++ b/tests/data/test-repo2/Packages
+@@ -0,0 +1,27 @@
++Package: abrowser
++Priority: optional
++Section: web
++Installed-Size: 136
++Maintainer: Ubuntu Mozilla Team <ubuntu-mozillateam@lists.ubuntu.com>
++Architecture: all
++Source: firefox
++Version: 3.6.9+build1+nobinonly-0ubuntu1
++Depends: firefox, abrowser-branding
++Filename: pool/main/f/firefox/abrowser_3.6.9+build1+nobinonly-0ubuntu1_all.deb
++Size: 82324
++MD5sum: 3a8c96814b0201c285274fded3e2d203
++SHA1: 05a3c9d5ced88fc51f3aa3166b0ca4030dcc4e49
++SHA256: 1c3d03dfe4364394f89f453d46b81c2024996a81d929a5ed6e1803ad5f9a21e9
++Description: metapackage for the unbranded abrowser
++ ABrowser is an unbranded version of the popular Firefox webbrowser;
++ it is written in the XUL language and designed to be lightweight and
++ cross-platform.
++ .
++ This is a metapackage that will point to the latest abrowser package in
++ your distribution.
++ Don't remove this if you want to receive automatic major version upgrades
++ for this package in future.
++Xul-Appid: {ec8030f7-c20a-464f-9b0e-13a3a9e97384}
++Bugs: https://bugs.launchpad.net/ubuntu/+filebug
++Origin: Ubuntu
++Supported: 18m
