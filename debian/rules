@@ -14,7 +14,7 @@ export PYBUILD_NAME=apt
 BUILDDIR3 := $(shell pybuild --print build_dir --interpreter python3)
 
 %:
-	dh $@ --with python3,sphinxdoc,quilt --buildsystem=pybuild
+	dh $@ --with python3,sphinxdoc --buildsystem=pybuild
 
 override_dh_auto_build:
 	dh_auto_build
