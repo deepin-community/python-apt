@@ -61,7 +61,6 @@ def get_version():
     version = version.replace("~exp", ".dev")
     version = version.replace("ubuntu", "+ubuntu")
     version = version.replace("tanglu", "+tanglu")
-    version = version.replace("deepin", "+deepin")
     version = version.split("build")[0]
 
     return version
@@ -81,6 +80,7 @@ files = [
     "indexfile.cc",
     "metaindex.cc",
     "pkgmanager.cc",
+    "pkgmanagerprogress.cc",
     "pkgrecords.cc",
     "pkgsrcrecords.cc",
     "policy.cc",
@@ -99,9 +99,9 @@ files = sorted(["python/" + fname for fname in files], key=lambda s: s[:-3])
 apt_pkg = Extension(
     "apt_pkg",
     files,
-    libraries=["apt-pkg"],
+    # Hack around resolution order for duplicate versioned symbols so we prefer the stdc++ ones
+    libraries=["stdc++", "apt-pkg"],
     extra_compile_args=[
-        "-std=c++11",
         "-Wno-write-strings",
         "-DAPT_8_CLEANER_HEADERS",
         "-DAPT_9_CLEANER_HEADERS",
@@ -121,7 +121,7 @@ apt_inst = Extension(
     "apt_inst",
     files,
     libraries=["apt-pkg"],
-    extra_compile_args=["-std=c++11", "-Wno-write-strings", "-DPY_SSIZE_T_CLEAN"],
+    extra_compile_args=["-Wno-write-strings", "-DPY_SSIZE_T_CLEAN"],
 )
 
 # Replace the leading _ that is used in the templates for translation
